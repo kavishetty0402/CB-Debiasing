@@ -1,0 +1,9 @@
+# Dependencies for the offline builder only (data/build_real_data.py).
+# The deployed Streamlit app does NOT use these. Keep them out of requirements.txt
+# so Streamlit Cloud installs a light environment.
+
+transformers>=4.40
+torch>=2.2
+datasets>=2.19
+pandas>=2.1
+numpy>=1.26
