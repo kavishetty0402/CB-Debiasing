@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-MODEL_NAME = "gtfintechlab/FOMC-RoBERTa"
+MODEL_NAME = "ProsusAI/finbert"
 DATASET_NAME = "gtfintechlab/fomc_communication"
 SPLIT = "test"   # "test" (realistic error), "train", or "all"
 
@@ -99,9 +99,10 @@ def score_with_roberta(sentences):
                 enc = {k: v.cuda() for k, v in enc.items()}
             logits = model(**enc).logits
             probs = torch.softmax(logits, dim=1).cpu().numpy()
-            # index 0 dovish, 1 hawkish, 2 neutral
-            p_dove[start:start + len(chunk)] = probs[:, 0]
-            p_hawk[start:start + len(chunk)] = probs[:, 1]
+            # FinBERT order: 0 positive, 1 negative, 2 neutral
+            # We read positive as the hawkish-leaning side and negative as dovish.
+            p_hawk[start:start + len(chunk)] = probs[:, 0]
+            p_dove[start:start + len(chunk)] = probs[:, 1]
             ai_label[start:start + len(chunk)] = probs.argmax(axis=1)
             print(f"  scored {min(start + BATCH, len(sentences))} / {len(sentences)}")
 
