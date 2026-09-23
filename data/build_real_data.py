@@ -100,9 +100,9 @@ def score_with_roberta(sentences):
             logits = model(**enc).logits
             probs = torch.softmax(logits, dim=1).cpu().numpy()
             # FinBERT order: 0 positive, 1 negative, 2 neutral
-            # We read positive as the hawkish-leaning side and negative as dovish.
-            p_hawk[start:start + len(chunk)] = probs[:, 0]
-            p_dove[start:start + len(chunk)] = probs[:, 1]
+            # On Fed text, negative tone tracks hawkish and positive tracks dovish.
+            p_hawk[start:start + len(chunk)] = probs[:, 1]
+            p_dove[start:start + len(chunk)] = probs[:, 0]
             ai_label[start:start + len(chunk)] = probs.argmax(axis=1)
             print(f"  scored {min(start + BATCH, len(sentences))} / {len(sentences)}")
 
