@@ -9,9 +9,10 @@ What it does:
   1. Loads the Trillion Dollar Words dataset of human labelled FOMC sentences
      (gtfintechlab/fomc_communication). Each sentence has a human hawkish,
      dovish, or neutral label. These human labels are the ground truth.
-  2. Runs the purpose built classifier (gtfintechlab/FOMC-RoBERTa) over the same
-     sentences. Its output is the AI signal we want to debias. This is a fixed
-     classifier, not a prompted model, so there is no prompt to choose.
+  2. Runs a classifier over the same sentences. Its output is the AI signal we
+     want to debias. Currently FinBERT (ProsusAI/finbert), an open sentiment
+     model used as a stand in, because FOMC-RoBERTa is gated. FinBERT reads
+     happy versus sad tone, not policy stance, so it is a weak signal.
   3. Writes one row per sentence with the AI score and the human truth.
 
 Why the test split by default:
@@ -100,11 +101,9 @@ def score_with_roberta(sentences):
             logits = model(**enc).logits
             probs = torch.softmax(logits, dim=1).cpu().numpy()
             # FinBERT order: 0 positive, 1 negative, 2 neutral
-            # On Fed text, negative tone tracks hawkish and positive tracks dovish.
-            p_hawk[start:start + len(chunk)] = probs[:, 1]
-            p_dove[start:start + len(chunk)] = probs[:, 0]
-            ai_label[start:start + len(chunk)] = probs.argmax(axis=1)
-            print(f"  scored {min(start + BATCH, len(sentences))} / {len(sentences)}")
+            # On Fed text, positive tone tracks hawkish (strong economy) and negative tracks dovish.
+            p_hawk[start:start + len(chunk)] = probs[:, 0]
+            p_dove[start:start + len(chunk)] = probs[:, 1]
 
     ai_score = p_hawk - p_dove   # positive means hawkish, negative means dovish
     return ai_score, ai_label
@@ -130,16 +129,24 @@ def main():
     out.to_csv(OUT_PATH, index=False)
 
     # sanity check so you can eyeball the label mapping and model behaviour
-    agree = (np.sign(out["ai_score"]) == np.sign(out["true_hawk"])).mean()
+    # Neutral sentences have a true score of exactly 0, so they can never "match"
+    # the sign of the AI score. Leave them out of the direction check.
+    leaning = out["true_hawk"] != 0
+    ai_sign = np.sign(out.loc[leaning, "ai_score"])
+    true_sign = np.sign(out.loc[leaning, "true_hawk"])
+    direction_accuracy = (ai_sign == true_sign).mean()
+    correlation = np.corrcoef(out["ai_score"], out["true_hawk"])[0, 1]
+
     print()
     print(f"Wrote {OUT_PATH} with {len(out)} rows")
     print(f"  true label mix: {df['label'].value_counts().to_dict()}")
     print(f"  mean true hawkishness: {out['true_hawk'].mean():+.3f}")
     print(f"  mean AI score:         {out['ai_score'].mean():+.3f}")
-    print(f"  sign agreement AI vs human: {agree:.2%}")
+    print(f"  direction accuracy on leaning sentences: {direction_accuracy:.2%}")
+    print(f"  correlation AI vs human: {correlation:+.3f}")
     print()
-    print("If sign agreement is very low, the label map is probably flipped. "
-          "Adjust LABEL_TO_SCORE at the top and rerun.")
+    print("Correlation should be positive. If it is negative, the AI score is "
+          "pointing the wrong way: swap the p_hawk and p_dove lines and rerun.")
 
 
 if __name__ == "__main__":
