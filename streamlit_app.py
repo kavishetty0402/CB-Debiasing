@@ -40,7 +40,7 @@ PROMPT_LABELS = {
     "ai_promptA": "Prompt A (reads slightly more hawkish)",
     "ai_promptB": "Prompt B (reads slightly more dovish)",
     "ai_promptC": "Prompt C (fairly balanced)",
-    "ai_score": "FOMC-RoBERTa score",
+    "ai_score": "FinBERT sentiment (weak stand in)",
     "ai_uploaded": "Your uploaded AI score",
 }
 BLUE = "#1f4e79"
@@ -54,8 +54,14 @@ st.set_page_config(page_title="Debiasing AI Signals", page_icon="\U0001F4CF", la
 # ---------------------------------------------------------------------------
 
 @st.cache_data
-def load_csv(path_str: str) -> pd.DataFrame:
+def _read_csv_cached(path_str: str, modified_time: float) -> pd.DataFrame:
     return pd.read_csv(path_str)
+
+
+def load_csv(path_str: str) -> pd.DataFrame:
+    # the file's modified time is part of the cache key, so a newly uploaded
+    # CSV is picked up instead of an old cached copy
+    return _read_csv_cached(path_str, Path(path_str).stat().st_mtime)
 
 
 def draw_labeled(n_rows: int, n_labeled: int, seed: int):
@@ -159,7 +165,15 @@ elif mode == "real":
         )
         st.stop()
     df = load_csv(str(REAL_PATH)).copy()
-    score_cols = ["ai_score"]
+    # every column starting with "ai_" is an AI signal: FinBERT, plus the three
+    # language model prompts once data/score_with_llm.py has been run
+    score_cols = []
+    for c in df.columns:
+        if c.startswith("ai_"):
+            score_cols.append(c)
+    PROMPT_LABELS["ai_promptA"] = "LLM, prompt A (benchmark wording)"
+    PROMPT_LABELS["ai_promptB"] = "LLM, prompt B (rates trader framing)"
+    PROMPT_LABELS["ai_promptC"] = "LLM, prompt C (bare one line question)"
     truth_all = True
     true_mean_ref = float(df[true_col].mean())
 
@@ -211,7 +225,8 @@ if mode == "sim":
 elif mode == "real":
     st.caption(
         "Real FOMC data. Genuine Fed sentences from the Trillion Dollar Words "
-        "dataset, scored by the FOMC-RoBERTa classifier (the AI signal), with the "
+        "dataset, scored by AI (FinBERT, plus a language model asked three ways "
+        "if those scores have been built), with the "
         "dataset's human hawkish or dovish labels as the truth. We hide most human "
         "labels to simulate hand labelling, then check recovery against the rest."
     )
@@ -257,12 +272,13 @@ st.text_area(
 st.header("Step 3. The AI scores everything")
 if has_prompts:
     st.write(
-        "The same model was asked with three different prompts. Pick which to "
+        "Several AI signals are available (different prompts or models). Pick which to "
         "treat as your signal. This choice should not change your final answer, "
         "but for the naive method it does."
     )
     prompt = st.selectbox("AI scoring to use", score_cols,
-                          format_func=lambda c: PROMPT_LABELS.get(c, c), index=2)
+                          format_func=lambda c: PROMPT_LABELS.get(c, c),
+                          index=len(score_cols) - 1)
 else:
     prompt = score_cols[0]
     st.write(f"Signal: {PROMPT_LABELS.get(prompt, prompt)}. A fixed classifier "
@@ -379,7 +395,7 @@ if has_outcome:
 if has_prompts:
     st.header("Step 8. Stress test the prompt")
     st.write(
-        "Run the same rubric under all three prompts. The naive answer swings with "
+        "Run the same rubric under every available AI signal. The naive answer swings with "
         "the wording while the debiased answer stays put. That stability is the "
         "point: your conclusion should not depend on how you phrased the prompt."
     )
@@ -388,7 +404,10 @@ if has_prompts:
         sc = df[c].to_numpy(float)
         nm_c = naive_mean(sc, alpha=alpha)
         pm_c = ppi_mean(y_lab, sc[lab_idx], sc[unlab_idx], alpha=alpha)
-        tag = c.replace("ai_prompt", "Prompt ")
+        if c == "ai_score":
+            tag = "FinBERT"
+        else:
+            tag = c.replace("ai_prompt", "Prompt ")
         rows.append({"prompt": tag, "kind": "Naive", **{k: nm_c[k] for k in ("estimate", "low", "high")}})
         rows.append({"prompt": tag, "kind": "Debiased", **{k: pm_c[k] for k in ("estimate", "low", "high")}})
     sdf = pd.DataFrame(rows)

@@ -91,6 +91,22 @@ Notes:
   daily yields. Aligning release dates and pulling the 2 year yield from FRED is a
   clean next step if you want the real regression too.
 
+## Score the real sentences with a language model (run once, on your Mac)
+
+FinBERT reads happy versus sad tone, not policy stance, so it is a weak signal.
+A language model asked directly whether each sentence is hawkish, dovish or
+neutral is a much better reader, and asking it three different ways brings the
+prompt stress test to real Fed text.
+
+1. Install Ollama from https://ollama.com and open it.
+2. In Terminal: `ollama pull llama3.1:8b`
+3. From the project folder: `python3 data/score_with_llm.py`
+
+This adds three columns (ai_promptA, ai_promptB, ai_promptC) to
+`data/fomc_real.csv`. Progress is saved to `data/llm_progress.csv` as it runs, so
+you can stop and restart it. Upload only the updated `fomc_real.csv` to GitHub,
+not the progress file.
+
 ## Deploy to Streamlit Community Cloud
 
 1. Create a public GitHub repository and put every file in this folder at its
@@ -112,7 +128,8 @@ streamlit_app.py          the app and the ten step walkthrough
 ppi/estimators.py         the debiasing maths (mean and regression) and efficiency
 data/generate_data.py     seeded generator for the simulation dataset
 data/fomc_demo.csv        the bundled simulation corpus
-data/build_real_data.py   offline builder for the real FOMC dataset
+data/build_real_data.py   offline builder for the real FOMC dataset (FinBERT)
+data/score_with_llm.py    offline scorer: local language model, three prompts
 requirements.txt          light dependencies for the app
 requirements-build.txt    heavy dependencies for the offline builder only
 .streamlit/config.toml    accessible high contrast theme
